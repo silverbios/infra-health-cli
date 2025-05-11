@@ -36,6 +36,7 @@ type MonitorResult struct {
 	StatusCode int    `json:"status_code,omitempty"`
 	Latency    string `json:"latency,omitempty"`
 	PacketLoss string `json:"packet_loss,omitempty"`
+	Timestamp  string `json:"timestamp"`
 }
 
 func main() {
@@ -74,8 +75,9 @@ func runMonitor(choice int, endpoint string, portnumber int, jsonOutput bool) {
 	clearScreen()
 
 	result := MonitorResult{
-		Endpoint: endpoint,
-		Port:     portnumber,
+		Endpoint:  endpoint,
+		Port:      portnumber,
+		Timestamp: time.Now().Format(time.RFC3339),
 	}
 
 	if jsonOutput {
