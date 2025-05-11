@@ -40,14 +40,14 @@ type MonitorResult struct {
 }
 
 func main() {
-	flagChoice := flag.Int("choice", 0, "Monitoring type: 1=HTTP, 2=HTTPS, etc.")
+	flagChoice := flag.Int("choice", 0, "Monitoring type: 1=HTTP, 2=HTTPS, 3=TELNET, 4=ICMP")
 	flagEndpoint := flag.String("endpoint", "", "Target endpoint")
 	flagPort := flag.Int("port", 0, "TCP port (only for choice 3)")
 	flagJSON := flag.Bool("json", false, "Output result as JSON")
 	flag.Parse()
 
 	if *flagChoice > 0 && *flagEndpoint != "" && (*flagChoice != 3 || *flagPort > 0) {
-		runMonitor(*flagChoice, *flagEndpoint, *flagPort, *flagJSON)
+		runMonitor(*flagChoice, *flagEndpoint, *flagPort, *flagJSON, false)
 		return
 	}
 
@@ -55,7 +55,7 @@ func main() {
 		var choice, portnumber int
 		var endpoint string
 
-		fmt.Printf("Select type of you want to monitor:\n1. HTTP\n2. HTTPS\n3. TCP\n4. ICMP\n")
+		fmt.Printf("Select type of you want to monitor:\n1. HTTP\n2. HTTPS\n3. TELNET\n4. ICMP\n")
 		fmt.Scan(&choice)
 
 		fmt.Printf("Enter your endpoint: ")
@@ -66,13 +66,15 @@ func main() {
 			fmt.Scan(&portnumber)
 		}
 
-		runMonitor(choice, endpoint, portnumber, *flagJSON)
+		runMonitor(choice, endpoint, portnumber, *flagJSON, true)
+
+		fmt.Println("\n--- Press Enter to continue ---")
+		fmt.Scanln()
+		clearScreen()
 	}
 }
 
-func runMonitor(choice int, endpoint string, portnumber int, jsonOutput bool) {
-
-	clearScreen()
+func runMonitor(choice int, endpoint string, portnumber int, jsonOutput bool, interactive bool) {
 
 	result := MonitorResult{
 		Endpoint:  endpoint,
@@ -143,6 +145,7 @@ func runMonitor(choice int, endpoint string, portnumber int, jsonOutput bool) {
 
 	case 3:
 		address := endpoint + ":" + strconv.Itoa(portnumber)
+		result.Type = "TELNET"
 		conn, err := net.DialTimeout("tcp", address, time.Minute)
 		if err != nil {
 			result.Status = "Closed"
@@ -161,11 +164,26 @@ func runMonitor(choice int, endpoint string, portnumber int, jsonOutput bool) {
 		}
 
 	case 4:
+
+		result.Type = "ICMP"
 		icmper, err := probing.NewPinger(endpoint)
+
+		if err != nil || icmper == nil {
+			result.Status = "Ping Setup Failed"
+			if !jsonOutput {
+				fmt.Printf("Failed to initialize ping for %s\n", endpoint)
+			}
+			return
+		}
+
 		icmper.Count = 4
 		icmper.Timeout = 5 * time.Second
+		//icmper.SetPrivileged(true)
+
 		err = icmper.Run()
+
 		if err != nil {
+			fmt.Println("Ping error:", err)
 			result.Status = "unreachable"
 			if !jsonOutput {
 				fmt.Printf("The %s is not reachable via ICMP\n", endpoint)
@@ -173,14 +191,8 @@ func runMonitor(choice int, endpoint string, portnumber int, jsonOutput bool) {
 			break
 		}
 
-		if err != nil {
-			result.Status = "Ping Setup Failed"
-			if !jsonOutput {
-				fmt.Printf("the %s is not reacble at the moment\n", endpoint)
-			}
-			return
-		}
 		plratio := strconv.FormatFloat(icmper.Statistics().PacketLoss, 'f', 2, 64)
+
 		if icmper.Statistics().PacketLoss != 0 {
 			result.Status = "Partial Loss"
 			if !jsonOutput {
@@ -198,12 +210,6 @@ func runMonitor(choice int, endpoint string, portnumber int, jsonOutput bool) {
 		result.Status = "invalid choice"
 		if !jsonOutput {
 			fmt.Println("Invalid choice.")
-		}
-
-		if !jsonOutput {
-			fmt.Println("\n--- Press Enter to return ---")
-			fmt.Scanln()
-			fmt.Scanln()
 		}
 	}
 }
