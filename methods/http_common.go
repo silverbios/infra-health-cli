@@ -2,6 +2,7 @@ package methods
 
 import (
 	"fmt"
+	"infra-health-cli/misc"
 	"infra-health-cli/output"
 	"net/http"
 	"strconv"
@@ -21,7 +22,12 @@ func doHTTPCheck(scheme string, checkType string, endpoint string, portnumber in
 		address = endpoint + ":" + strconv.Itoa(portnumber)
 	}
 
+	start := time.Now()
+
 	resp, err := http.Get(scheme + "://" + address)
+
+	result.Latency = misc.TrackLatency(start)
+
 	if err != nil {
 		result.Status = "Unreachable"
 		if !jsonOutput {

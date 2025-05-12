@@ -2,6 +2,7 @@ package methods
 
 import (
 	"fmt"
+	"infra-health-cli/misc"
 	"infra-health-cli/output"
 	"net"
 	"strconv"
@@ -25,7 +26,12 @@ func TELNET(choice int, endpoint string, portnumber int, jsonOutput bool, intera
 		address = endpoint
 	}
 
+	start := time.Now()
+
 	conn, err := net.DialTimeout("tcp", address, time.Minute)
+
+	result.Latency = misc.TrackLatency(start)
+
 	if err != nil {
 		result.Status = "Closed"
 		if !jsonOutput {

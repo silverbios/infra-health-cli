@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"time"
 
+	"infra-health-cli/misc"
 	"infra-health-cli/output"
 
 	probing "github.com/prometheus-community/pro-bing"
@@ -18,7 +19,12 @@ func ICMPER(endpoint string, jsonOutput bool, interactive bool) int {
 		Timestamp: time.Now().Format(time.RFC3339),
 	}
 
+	start := time.Now()
+
 	icmper, err := probing.NewPinger(endpoint)
+
+	result.Latency = misc.TrackLatency(start)
+
 	if err != nil || icmper == nil {
 		result.Status = "Ping Setup Failed"
 		if !jsonOutput {
