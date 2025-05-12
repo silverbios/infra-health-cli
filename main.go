@@ -1,18 +1,13 @@
 package main
 
 import (
-	"encoding/json"
 	"flag"
 	"fmt"
-	"net"
-	"net/http"
+	"infra-health-cli/methods"
+	"infra-health-cli/output"
 	"os"
 	"os/exec"
 	"runtime"
-	"strconv"
-	"time"
-
-	probing "github.com/prometheus-community/pro-bing"
 )
 
 func clearScreen() {
@@ -27,18 +22,6 @@ func clearScreen() {
 		cmd.Run()
 	}
 }
-
-type MonitorResult struct {
-	Type       string `json:"type"`
-	Endpoint   string `json:"endpoint"`
-	Port       int    `json:"port,omitempty"`
-	Status     string `json:"status"`
-	StatusCode int    `json:"status_code,omitempty"`
-	Latency    string `json:"latency,omitempty"`
-	PacketLoss string `json:"packet_loss,omitempty"`
-	Timestamp  string `json:"timestamp"`
-}
-
 func main() {
 	flagChoice := flag.Int("choice", 0, "Monitoring type: 1=HTTP, 2=HTTPS, 3=TELNET, 4=ICMP")
 	flagEndpoint := flag.String("endpoint", "", "Target endpoint")
@@ -76,140 +59,26 @@ func main() {
 
 func runMonitor(choice int, endpoint string, portnumber int, jsonOutput bool, interactive bool) {
 
-	result := MonitorResult{
-		Endpoint:  endpoint,
-		Port:      portnumber,
-		Timestamp: time.Now().Format(time.RFC3339),
-	}
-
-	if jsonOutput {
-		defer func() {
-			jsonData, err := json.MarshalIndent(result, "", "  ")
-			if err != nil {
-				fmt.Println("JSON marshal error:", err)
-			} else {
-				fmt.Println(string(jsonData))
-			}
-		}()
-	}
-
 	switch choice {
-	case 1:
-		resp, err := http.Get("http://" + endpoint)
-		result.Type = "HTTP"
-		if err != nil {
-			result.Status = "Unreachable"
-			if !jsonOutput {
-				fmt.Printf("the %s is not reachable at the moment\n", endpoint)
-			}
-			return
-		}
-		defer resp.Body.Close()
-		statusCode := resp.StatusCode
-		if statusCode != 200 {
-			result.Status = "error"
-			if !jsonOutput {
-				fmt.Printf("something bad happened on %s\n", endpoint)
-			}
-		} else {
-			result.Status = "OK"
-			if !jsonOutput {
-				fmt.Printf("HTTP check successful for %s (Status: %d)\n", endpoint, resp.StatusCode)
-			}
 
-		}
+	case 1:
+		methods.HTTPCHECK(choice, endpoint, portnumber, jsonOutput, interactive)
 
 	case 2:
-		resp, err := http.Get("https://" + endpoint)
-		result.Type = "HTTPS"
-		if err != nil {
-			result.Status = "Unreachable"
-			if !jsonOutput {
-				fmt.Printf("the %s is not reachable at the moment\n", endpoint)
-			}
-			return
-		}
-		defer resp.Body.Close()
-		statusCode := resp.StatusCode
-		if statusCode != 200 {
-			result.Status = "error"
-			if !jsonOutput {
-				fmt.Printf("something bad happened on %s\n", endpoint)
-			}
-		} else {
-			result.Status = "OK"
-			if !jsonOutput {
-				fmt.Printf("HTTPS check successful for %s (Status: %d)\n", endpoint, resp.StatusCode)
-			}
-		}
+		methods.HTTPSCHECK(choice, endpoint, portnumber, jsonOutput, interactive)
 
 	case 3:
-		address := endpoint + ":" + strconv.Itoa(portnumber)
-		result.Type = "TELNET"
-		conn, err := net.DialTimeout("tcp", address, time.Minute)
-		if err != nil {
-			result.Status = "Closed"
-			if !jsonOutput {
-				fmt.Printf("Port %d is closed on %s\n", portnumber, endpoint)
-			}
-			return
-		}
-		defer conn.Close()
-		if conn != nil {
-			result.Status = "Open"
-			if !jsonOutput {
-				fmt.Printf("Port %d is open on %s\n", portnumber, endpoint)
-			}
-			return
-		}
+		methods.TELNET(choice, endpoint, portnumber, jsonOutput, interactive)
 
 	case 4:
-
-		result.Type = "ICMP"
-		icmper, err := probing.NewPinger(endpoint)
-
-		if err != nil || icmper == nil {
-			result.Status = "Ping Setup Failed"
-			if !jsonOutput {
-				fmt.Printf("Failed to initialize ping for %s\n", endpoint)
-			}
-			return
-		}
-
-		icmper.Count = 4
-		icmper.Timeout = 5 * time.Second
-		//icmper.SetPrivileged(true)
-
-		err = icmper.Run()
-
-		if err != nil {
-			fmt.Println("Ping error:", err)
-			result.Status = "unreachable"
-			if !jsonOutput {
-				fmt.Printf("The %s is not reachable via ICMP\n", endpoint)
-			}
-			break
-		}
-
-		plratio := strconv.FormatFloat(icmper.Statistics().PacketLoss, 'f', 2, 64)
-
-		if icmper.Statistics().PacketLoss != 0 {
-			result.Status = "Partial Loss"
-			if !jsonOutput {
-				fmt.Printf("Connectivity issues detected for %s — loss ratio: %s, average latency: %s ms\n", endpoint, plratio, icmper.Statistics().AvgRtt)
-			}
-		} else {
-			result.Status = "OK"
-			if !jsonOutput {
-				fmt.Printf("Successfully reached %s with an average latency of %s ms\n", endpoint, icmper.Statistics().AvgRtt)
-			}
-		}
+		methods.ICMPER(endpoint, jsonOutput, interactive)
 
 	default:
-		result.Type = "unknown"
-		result.Status = "invalid choice"
+		result := output.NewInvalidChoiceResult()
 		if !jsonOutput {
 			fmt.Println("Invalid choice.")
 		}
+		output.Jsonify(result, jsonOutput)
+		return
 	}
 }
